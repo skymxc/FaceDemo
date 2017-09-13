@@ -1,0 +1,9 @@
+<resources>
+    <string name="app_name">FaceDemo</string>
+    <string name="title_activity_register_bd">RegisterBDActivity</string>
+    <string name="title_activity_bd">BDActivity</string>
+    <string name="loading">加载中，请稍后</string>
+    <string name="title_activity_identify">IdentifyActivity</string>
+    <string name="title_activity_verify_user_bd">VerifyUserBDActivity</string>
+    <string name="title_activity_del_user">DelUserActivity</string>
+</resources>

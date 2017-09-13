@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="cn.sintoon.facedemo">
+
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
+
+    <application
+        android:name=".App"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+        <activity android:name=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity
+            android:name=".bd.ui.RegisterBDActivity"
+            android:label="@string/title_activity_register_bd"
+            android:theme="@style/AppTheme.NoActionBar" />
+        <activity
+            android:name=".bd.ui.BDActivity"
+            android:label="@string/title_activity_bd"
+            android:theme="@style/AppTheme.NoActionBar" />
+        <activity
+            android:name=".bd.ui.IdentifyBDActivity"
+            android:label="@string/title_activity_identify"
+            android:theme="@style/AppTheme.NoActionBar" />
+        <activity
+            android:name=".bd.ui.VerifyUserBDActivity"
+            android:label="@string/title_activity_verify_user_bd"
+            android:theme="@style/AppTheme.NoActionBar" />
+        <activity
+            android:name=".bd.ui.DelUserActivity"
+            android:label="@string/title_activity_del_user"
+            android:theme="@style/AppTheme.NoActionBar" />
+        <activity android:name=".arc.ui.IdentifyARCActivity"></activity>
+    </application>
+
+</manifest>
