@@ -25,14 +25,9 @@ import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
-import android.view.SurfaceHolder;
-import android.view.SurfaceView;
 import android.view.TextureView;
 
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -41,7 +36,7 @@ import cn.sintoon.facedemo.R;
 import cn.sintoon.facedemo.WaitDialog;
 import cn.sintoon.facedemo.utils.AppUtil;
 
-public class IdentifyARCActivity extends AppCompatActivity  {
+public class IdentifyARCActivity extends AppCompatActivity {
 
     private WaitDialog mWaitDialog;
     private TextureView mTextureView;
@@ -73,12 +68,12 @@ public class IdentifyARCActivity extends AppCompatActivity  {
 
     @Override
     protected void onResume() {
-        Log.e("onResume","identify");
+        Log.e("onResume", "identify");
         startBackground();
         super.onResume();
-        if (mTextureView.isAvailable()){
-            openCamera(mTextureView.getWidth(),mTextureView.getHeight());
-        }else{
+        if (mTextureView.isAvailable()) {
+            openCamera(mTextureView.getWidth(), mTextureView.getHeight());
+        } else {
             mTextureView.setSurfaceTextureListener(surfaceTextureListener);
         }
     }
@@ -87,12 +82,13 @@ public class IdentifyARCActivity extends AppCompatActivity  {
     protected void onPause() {
         stopBackground();
         super.onPause();
+        closeCamera();
     }
 
     private TextureView.SurfaceTextureListener surfaceTextureListener = new TextureView.SurfaceTextureListener() {
         @Override
         public void onSurfaceTextureAvailable(SurfaceTexture surfaceTexture, int width, int height) {
-            openCamera(width,height);
+            openCamera(width, height);
         }
 
         @Override
@@ -211,7 +207,7 @@ public class IdentifyARCActivity extends AppCompatActivity  {
         public void onImageAvailable(ImageReader imageReader) {
             Image image = imageReader.acquireLatestImage();
             ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-            Log.e("onImageAvailable", "size("+buffer.remaining()+");thread-->" + Thread.currentThread().getName());
+            Log.e("onImageAvailable", "size(" + buffer.remaining() + ");thread-->" + Thread.currentThread().getName());
 //            byte[] bytes = new byte[buffer.remaining()];
 //            buffer.get(bytes);
 //            File file = createCaptureFile();
@@ -239,15 +235,15 @@ public class IdentifyARCActivity extends AppCompatActivity  {
     }
 
 
-    private void openCamera(int width,int height) {
+    private void openCamera(int width, int height) {
         //开始打开摄像头
-        CameraManager cm = (CameraManager) getSystemService(CAMERA_SERVICE);
         try {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
                 AppUtil.toast("拒绝了摄像头权限，无法打开摄像头");
                 AppUtil.finishActivity(this);
                 return;
             }
+            CameraManager cm = (CameraManager) getSystemService(CAMERA_SERVICE);
             mImageReader = ImageReader.newInstance(width, height, ImageFormat.JPEG, 1);
             mImageReader.setOnImageAvailableListener(onImageAvailableListener, mBackgroudHandler);
             cm.openCamera(cameraID, stateCallback, null);
@@ -255,20 +251,41 @@ public class IdentifyARCActivity extends AppCompatActivity  {
             e.printStackTrace();
         }
     }
+
+    private void closeCamera() {
+        if (null != mCaptureSession) {
+            mCaptureSession.close();
+            mCaptureSession = null;
+        }
+        if (null != mCameraDevice) {
+            mCameraDevice.close();
+            mCameraDevice = null;
+        }
+        if (null != mImageReader) {
+            mImageReader.close();
+            mImageReader = null;
+        }
+    }
+
     private void startBackground() {
-        mBackgroudThread = new HandlerThread("background");
+        mBackgroudThread = new HandlerThread("CameraBackground");
         mBackgroudThread.start();
         mBackgroudHandler = new Handler(mBackgroudThread.getLooper());
     }
 
     private void stopBackground() {
-        if (null != mBackgroudThread) {
-            mBackgroudThread.quitSafely();
-            mBackgroudThread = null;
-        }
-        if (null != mBackgroudHandler) {
-            mBackgroudHandler.removeCallbacksAndMessages(null);
-            mBackgroudHandler = null;
+        try {
+            if (null != mBackgroudThread) {
+                mBackgroudThread.quitSafely();
+                mBackgroudThread.join();
+                mBackgroudThread = null;
+            }
+            if (null != mBackgroudHandler) {
+                mBackgroudHandler.removeCallbacksAndMessages(null);
+                mBackgroudHandler = null;
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
         }
     }
 
