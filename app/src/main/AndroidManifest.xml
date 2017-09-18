@@ -44,7 +44,11 @@
             android:name=".bd.ui.DelUserActivity"
             android:label="@string/title_activity_del_user"
             android:theme="@style/AppTheme.NoActionBar" />
-        <activity android:name=".arc.ui.IdentifyARCActivity"></activity>
+        <activity android:name=".arc.ui.IdentifyARCActivity" />
+        <activity
+            android:name=".arc.ui.ARCActivity"
+            android:label="@string/title_activity_arc"
+            android:theme="@style/AppTheme.NoActionBar"></activity>
     </application>
 
 </manifest>

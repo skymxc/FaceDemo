@@ -7,6 +7,7 @@ import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
 
+import cn.sintoon.facedemo.arc.ui.ARCActivity;
 import cn.sintoon.facedemo.arc.ui.IdentifyARCActivity;
 import cn.sintoon.facedemo.bd.ui.BDActivity;
 
@@ -35,7 +36,7 @@ public class MainActivity extends AppCompatActivity {
                 BDActivity.start(this);
                 break;
             case R.id.arc:
-                IdentifyARCActivity.start(this);
+                ARCActivity.start(this);
                 break;
         }
     }

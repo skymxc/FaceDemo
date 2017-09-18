@@ -5,15 +5,18 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.ImageFormat;
+import android.graphics.Point;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.TotalCaptureResult;
+import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
 import android.os.Bundle;
@@ -27,13 +30,21 @@ import android.util.Size;
 import android.view.Surface;
 import android.view.TextureView;
 
+import com.arcsoft.facedetection.AFD_FSDKEngine;
+import com.arcsoft.facedetection.AFD_FSDKError;
+import com.arcsoft.facedetection.AFD_FSDKFace;
+
 import java.io.File;
-import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 
 import cn.sintoon.facedemo.R;
 import cn.sintoon.facedemo.WaitDialog;
+import cn.sintoon.facedemo.arc.utils.ARCUtil;
 import cn.sintoon.facedemo.utils.AppUtil;
 
 public class IdentifyARCActivity extends AppCompatActivity {
@@ -45,11 +56,13 @@ public class IdentifyARCActivity extends AppCompatActivity {
     private CameraCaptureSession mCaptureSession;
     private CaptureRequest mCaptureRequest;
     private CaptureRequest.Builder mCaptureRequestBuilder;
-    private String cameraID = "1";
     private ImageReader mImageReader;
     private Handler mBackgroudHandler;
     private HandlerThread mBackgroudThread;
     private Size mPreviewSize;
+    private int mSensorOrientation;
+    private String mCameraId = Integer.toString(CameraCharacteristics.LENS_FACING_FRONT);
+    private boolean mFlashSupported;
 
     public static void start(Context context) {
         Intent intent = new Intent(context, IdentifyARCActivity.class);
@@ -111,26 +124,15 @@ public class IdentifyARCActivity extends AppCompatActivity {
         public void onOpened(@NonNull CameraDevice cameraDevice) {
             Log.e("onOpened", "camera");
             mCameraDevice = cameraDevice;
-            try {
-                Surface surface = new Surface(mTextureView.getSurfaceTexture());
-                mCameraDevice.createCaptureSession(Arrays.asList(surface, mImageReader.getSurface()), sessionStateCallback, null);
-            } catch (CameraAccessException e) {
-                e.printStackTrace();
-                AppUtil.toast("摄像头打开失败");
-                AppUtil.finishActivity(IdentifyARCActivity.this);
-            }
+            createCameraPreviewSession();
         }
 
         @Override
         public void onDisconnected(@NonNull CameraDevice cameraDevice) {
             AppUtil.toast("摄像头关闭");
             Log.e("onDisconnected", "camera");
-            if (null != mCaptureSession) {
-                mCaptureSession.close();
-            }
-            if (null != mCameraDevice) {
-                mCameraDevice.close();
-            }
+
+            closeCamera();
         }
 
         @Override
@@ -148,6 +150,22 @@ public class IdentifyARCActivity extends AppCompatActivity {
         }
     };
 
+    private void createCameraPreviewSession() {
+        SurfaceTexture texture = mTextureView.getSurfaceTexture();
+        assert texture != null;
+        texture.setDefaultBufferSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
+        Surface surface = new Surface(texture);
+        try {
+            mCaptureRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+//            mCaptureRequestBuilder.addTarget(mImageReader.getSurface());
+            mCaptureRequestBuilder.addTarget(surface);
+            mCameraDevice.createCaptureSession(Arrays.asList(mImageReader.getSurface(), surface), sessionStateCallback, mBackgroudHandler);
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
+
+    }
+
 
     private CameraCaptureSession.StateCallback sessionStateCallback = new CameraCaptureSession.StateCallback() {
         @Override
@@ -160,12 +178,9 @@ public class IdentifyARCActivity extends AppCompatActivity {
             }
             try {
                 mCaptureSession = cameraCaptureSession;
-                CaptureRequest.Builder previewRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-                previewRequestBuilder.addTarget(new Surface(mTextureView.getSurfaceTexture()));
-                previewRequestBuilder.addTarget(mImageReader.getSurface());
-                CaptureRequest previewRequest = previewRequestBuilder.build();
-                int i = mCaptureSession.setRepeatingRequest(previewRequest, captureCallback, null);
-
+                mCaptureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+                mCaptureRequest = mCaptureRequestBuilder.build();
+                mCaptureSession.setRepeatingRequest(mCaptureRequest, captureCallback, null);
             } catch (CameraAccessException e) {
                 e.printStackTrace();
             }
@@ -202,12 +217,28 @@ public class IdentifyARCActivity extends AppCompatActivity {
         }
     };
 
+    List<AFD_FSDKFace> faces = new ArrayList<>();
     private ImageReader.OnImageAvailableListener onImageAvailableListener = new ImageReader.OnImageAvailableListener() {
         @Override
         public void onImageAvailable(ImageReader imageReader) {
-            Image image = imageReader.acquireLatestImage();
-            ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-            Log.e("onImageAvailable", "size(" + buffer.remaining() + ");thread-->" + Thread.currentThread().getName());
+            Image image = imageReader.acquireNextImage();
+            int width = image.getWidth();
+            int height = image.getHeight();
+            byte[] bytes = ARCUtil.getDataFromImage(image, ARCUtil.COLOR_FormatNV21);
+            image.close();
+//            faces.clear();
+            //进行人脸检测
+            AFD_FSDKEngine detectClient = ARCUtil.getDetectClient();
+            AFD_FSDKError error = detectClient.AFD_FSDK_StillImageFaceDetection(
+                    bytes, width, height, AFD_FSDKEngine.CP_PAF_NV21, faces);
+            Log.e("onImageAvailable", "width(" + width + "),height(" + height + "),size("+faces.size()+"),errorCode-->" + error.getCode());
+            if (error.getCode() == 0) {
+                for (AFD_FSDKFace face : faces) {
+                    Log.e("onImageAvailable", "face-->" + face.toString());
+                }
+            } else {
+                AppUtil.toast("code->" + error.getCode());
+            }
 //            byte[] bytes = new byte[buffer.remaining()];
 //            buffer.get(bytes);
 //            File file = createCaptureFile();
@@ -221,7 +252,6 @@ public class IdentifyARCActivity extends AppCompatActivity {
 //            } catch (IOException e) {
 //                e.printStackTrace();
 //            }
-            image.close();
 
         }
     };
@@ -243,10 +273,97 @@ public class IdentifyARCActivity extends AppCompatActivity {
                 AppUtil.finishActivity(this);
                 return;
             }
+            //配置输出设置
+            setUpCameraOutputs(width, height);
             CameraManager cm = (CameraManager) getSystemService(CAMERA_SERVICE);
-            mImageReader = ImageReader.newInstance(width, height, ImageFormat.JPEG, 1);
-            mImageReader.setOnImageAvailableListener(onImageAvailableListener, mBackgroudHandler);
-            cm.openCamera(cameraID, stateCallback, null);
+            cm.openCamera(mCameraId, stateCallback, mBackgroudHandler);
+        } catch (CameraAccessException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void setUpCameraOutputs(int width, int height) {
+        CameraManager cm = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+        try {
+            String[] cameraIdList = cm.getCameraIdList();
+            for (String cameraId : cameraIdList) {
+                CameraCharacteristics characteristics = cm.getCameraCharacteristics(cameraId);
+                Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
+                //要前边的
+                if (null == facing || facing == CameraCharacteristics.LENS_FACING_BACK) {
+                    continue;
+                }
+                StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+                if (map == null) {
+                    continue;
+                }
+
+                Size largest = Collections.max(Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)), new CompareSizesByArea());
+                int displayRotation = getWindowManager().getDefaultDisplay().getRotation();
+
+                mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+                boolean swappedDimensions = false;
+                switch (displayRotation) {
+                    case Surface.ROTATION_0:
+                    case Surface.ROTATION_180:  //相机方向和手机方向不一致
+
+                        if (mSensorOrientation == 90 || mSensorOrientation == 270) {
+                            swappedDimensions = true;
+                        }
+                        break;
+                    case Surface.ROTATION_90:
+                    case Surface.ROTATION_270:
+                        if (mSensorOrientation == 0 || mSensorOrientation == 180) {
+                            swappedDimensions = true;
+                        }
+                        break;
+                }
+
+                Point displaySize = new Point();
+                getWindowManager().getDefaultDisplay().getSize(displaySize);
+                int rotatedPreviewWidth = width;
+                int rotatedPreviewHeight = height;
+                //最大预览尺寸 是 屏幕尺寸
+                int maxPreviewWidth = displaySize.x;
+                int maxPreviewHeight = displaySize.y;
+                if (swappedDimensions) {    //角度不一致 交换尺寸
+                    rotatedPreviewWidth = height;
+                    rotatedPreviewHeight = width;
+                    maxPreviewWidth = displaySize.y;
+                    maxPreviewHeight = displaySize.x;
+                }
+
+                mPreviewSize = chooseOptimalSize(map.getOutputSizes(ImageFormat.YUV_420_888),
+                        rotatedPreviewWidth, rotatedPreviewHeight, maxPreviewWidth,
+                        maxPreviewHeight, largest);
+
+
+                mImageReader = ImageReader.newInstance(mPreviewSize.getWidth(), mPreviewSize.getHeight(), ImageFormat.YUV_420_888, 1);
+                mImageReader.setOnImageAvailableListener(onImageAvailableListener, mBackgroudHandler);
+
+
+                // We fit the aspect ratio of TextureView to the size of preview we picked.
+                //获取配置的 方向信息 ，和我们得到的预览尺寸相匹配
+
+//                int orientation = getResources().getConfiguration().orientation;
+//
+//                if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+//                    mTextureView.setAspectRatio(
+//                            mPreviewSize.getWidth(), mPreviewSize.getHeight());
+//                } else {
+//                    mTextureView.setAspectRatio(
+//                            mPreviewSize.getHeight(), mPreviewSize.getWidth());
+//                }
+//
+//                // Check if the flash is supported. 闪光灯
+//                // Check if the flash is supported.
+                Boolean available = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+                mFlashSupported = available == null ? false : available;
+
+                mCameraId = cameraId;
+                return;
+
+            }
         } catch (CameraAccessException e) {
             e.printStackTrace();
         }
@@ -286,6 +403,69 @@ public class IdentifyARCActivity extends AppCompatActivity {
             }
         } catch (InterruptedException e) {
             e.printStackTrace();
+        }
+    }
+
+    /**
+     * Compares two {@code Size}s based on their areas.
+     */
+    static class CompareSizesByArea implements Comparator<Size> {
+
+        @Override
+        public int compare(Size lhs, Size rhs) {
+            // We cast here to ensure the multiplications won't overflow
+            return Long.signum((long) lhs.getWidth() * lhs.getHeight() -
+                    (long) rhs.getWidth() * rhs.getHeight());
+        }
+
+    }
+
+    /**
+     * Given {@code choices} of {@code Size}s supported by a camera, choose the smallest one that
+     * is at least as large as the respective texture view size, and that is at most as large as the
+     * respective max size, and whose aspect ratio matches with the specified value. If such size
+     * doesn't exist, choose the largest one that is at most as large as the respective max size,
+     * and whose aspect ratio matches with the specified value.
+     *
+     * @param choices           The list of sizes that the camera supports for the intended output
+     *                          class
+     * @param textureViewWidth  The width of the texture view relative to sensor coordinate
+     * @param textureViewHeight The height of the texture view relative to sensor coordinate
+     * @param maxWidth          The maximum width that can be chosen
+     * @param maxHeight         The maximum height that can be chosen
+     * @param aspectRatio       The aspect ratio
+     * @return The optimal {@code Size}, or an arbitrary one if none were big enough
+     */
+    private static Size chooseOptimalSize(Size[] choices, int textureViewWidth,
+                                          int textureViewHeight, int maxWidth, int maxHeight, Size aspectRatio) {
+
+
+        // Collect the supported resolutions that are at least as big as the preview Surface
+        List<Size> bigEnough = new ArrayList<>();
+        // Collect the supported resolutions that are smaller than the preview Surface
+        List<Size> notBigEnough = new ArrayList<>();
+        int w = aspectRatio.getWidth();
+        int h = aspectRatio.getHeight();
+        for (Size option : choices) {
+            if (option.getWidth() <= maxWidth && option.getHeight() <= maxHeight &&
+                    option.getHeight() == option.getWidth() * h / w) {
+                if (option.getWidth() >= textureViewWidth &&
+                        option.getHeight() >= textureViewHeight) {
+                    bigEnough.add(option);
+                } else {
+                    notBigEnough.add(option);
+                }
+            }
+        }
+
+        // Pick the smallest of those big enough. If there is no one big enough, pick the
+        // largest of those not big enough.
+        if (bigEnough.size() > 0) {
+            return Collections.min(bigEnough, new CompareSizesByArea());
+        } else if (notBigEnough.size() > 0) {
+            return Collections.max(notBigEnough, new CompareSizesByArea());
+        } else {
+            return choices[0];
         }
     }
 
