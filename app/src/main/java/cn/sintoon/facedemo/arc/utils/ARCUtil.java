@@ -28,7 +28,6 @@ public class ARCUtil {
         AFD_FSDKError afdFsdkError = detectEngine.AFD_FSDK_InitialFaceEngine(ConstantKey.ARC_APP_ID,
                 ConstantKey.ARC_FD_KEY, AFD_FSDKEngine.AFD_OPF_0_HIGHER_EXT, 16, 5);
         int code = afdFsdkError.getCode();
-        Log.e("init","afdError-->"+code);
         return code ==0;
     }
 

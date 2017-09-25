@@ -4,8 +4,14 @@ import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
+import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ImageFormat;
+import android.graphics.Paint;
+import android.graphics.PixelFormat;
 import android.graphics.Point;
+import android.graphics.PorterDuff;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -28,6 +34,8 @@ import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.util.Size;
 import android.view.Surface;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.view.TextureView;
 
 import com.arcsoft.facedetection.AFD_FSDKEngine;
@@ -50,7 +58,9 @@ import cn.sintoon.facedemo.utils.AppUtil;
 public class IdentifyARCActivity extends AppCompatActivity {
 
     private WaitDialog mWaitDialog;
-    private TextureView mTextureView;
+    private AutoFitTextureView mTextureView;
+    private SurfaceView mSurfaceView;
+    private SurfaceHolder mHolder;
 
     private CameraDevice mCameraDevice;
     private CameraCaptureSession mCaptureSession;
@@ -73,7 +83,12 @@ public class IdentifyARCActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_identify_arc);
-        mTextureView = (TextureView) findViewById(R.id.surface);
+        mTextureView = (AutoFitTextureView) findViewById(R.id.texture);
+        mSurfaceView = (SurfaceView) findViewById(R.id.surface);
+        mSurfaceView.setZOrderOnTop(true);
+        mHolder = mSurfaceView.getHolder();
+        mHolder.setFormat(PixelFormat.TRANSLUCENT);
+
         getSupportActionBar().setTitle("虹软识别");
         mWaitDialog = new WaitDialog(this);
         AppUtil.showWait(mWaitDialog, null);
@@ -93,10 +108,11 @@ public class IdentifyARCActivity extends AppCompatActivity {
 
     @Override
     protected void onPause() {
+        closeCamera();
         stopBackground();
         super.onPause();
-        closeCamera();
     }
+
 
     private TextureView.SurfaceTextureListener surfaceTextureListener = new TextureView.SurfaceTextureListener() {
         @Override
@@ -106,7 +122,6 @@ public class IdentifyARCActivity extends AppCompatActivity {
 
         @Override
         public void onSurfaceTextureSizeChanged(SurfaceTexture surfaceTexture, int i, int i1) {
-
         }
 
         @Override
@@ -157,7 +172,7 @@ public class IdentifyARCActivity extends AppCompatActivity {
         Surface surface = new Surface(texture);
         try {
             mCaptureRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-//            mCaptureRequestBuilder.addTarget(mImageReader.getSurface());
+            mCaptureRequestBuilder.addTarget(mImageReader.getSurface());
             mCaptureRequestBuilder.addTarget(surface);
             mCameraDevice.createCaptureSession(Arrays.asList(mImageReader.getSurface(), surface), sessionStateCallback, mBackgroudHandler);
         } catch (CameraAccessException e) {
@@ -218,6 +233,7 @@ public class IdentifyARCActivity extends AppCompatActivity {
     };
 
     List<AFD_FSDKFace> faces = new ArrayList<>();
+    Paint paint = null;
     private ImageReader.OnImageAvailableListener onImageAvailableListener = new ImageReader.OnImageAvailableListener() {
         @Override
         public void onImageAvailable(ImageReader imageReader) {
@@ -226,19 +242,30 @@ public class IdentifyARCActivity extends AppCompatActivity {
             int height = image.getHeight();
             byte[] bytes = ARCUtil.getDataFromImage(image, ARCUtil.COLOR_FormatNV21);
             image.close();
-//            faces.clear();
+            faces.clear();
             //进行人脸检测
             AFD_FSDKEngine detectClient = ARCUtil.getDetectClient();
             AFD_FSDKError error = detectClient.AFD_FSDK_StillImageFaceDetection(
                     bytes, width, height, AFD_FSDKEngine.CP_PAF_NV21, faces);
-            Log.e("onImageAvailable", "width(" + width + "),height(" + height + "),size("+faces.size()+"),errorCode-->" + error.getCode());
+            Canvas canvas = mHolder.lockCanvas();
             if (error.getCode() == 0) {
-                for (AFD_FSDKFace face : faces) {
-                    Log.e("onImageAvailable", "face-->" + face.toString());
+                canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+                if (faces.size() >= 1) {
+                    //显示框框
+                    AFD_FSDKFace face = faces.get(0).clone();
+                    Log.e("onImageAvailable", "face-->" + face.toString()+",角度："+getDegress(face.getDegree()));
+                    if (null == paint) {
+                        paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+                        paint.setColor(Color.RED);
+                        paint.setStrokeWidth(3.0f);
+                        paint.setStyle(Paint.Style.STROKE);
+                    }
+                    canvas.drawRect(face.getRect(), paint);
                 }
             } else {
                 AppUtil.toast("code->" + error.getCode());
             }
+            mHolder.unlockCanvasAndPost(canvas);
 //            byte[] bytes = new byte[buffer.remaining()];
 //            buffer.get(bytes);
 //            File file = createCaptureFile();
@@ -255,6 +282,52 @@ public class IdentifyARCActivity extends AppCompatActivity {
 
         }
     };
+
+    private String getDegress(int i) {
+        String degress = "0";
+        switch (i) {
+            case AFD_FSDKEngine.AFD_FOC_0:
+                degress = "0";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_30:
+                degress = "30";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_60:
+                degress = "60";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_90:
+                degress = "90";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_120:
+                degress = "120";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_150:
+                degress = "150";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_180:
+                degress = "180";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_210:
+                degress = "210";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_240:
+                degress = "240";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_270:
+                degress = "270";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_300:
+                degress = "300";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_330:
+                degress = "330";
+                break;
+            default:
+                degress = "other";
+                break;
+        }
+        return degress;
+    }
 
     private File createCaptureFile() {
         File mkdir = AppUtil.mkdir();
@@ -300,8 +373,8 @@ public class IdentifyARCActivity extends AppCompatActivity {
 
                 Size largest = Collections.max(Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)), new CompareSizesByArea());
                 int displayRotation = getWindowManager().getDefaultDisplay().getRotation();
-
                 mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+                Log.e("setUpCameraOutputs","相机方向--》"+mSensorOrientation+"手机方向-》"+displayRotation);
                 boolean swappedDimensions = false;
                 switch (displayRotation) {
                     case Surface.ROTATION_0:
@@ -345,16 +418,16 @@ public class IdentifyARCActivity extends AppCompatActivity {
                 // We fit the aspect ratio of TextureView to the size of preview we picked.
                 //获取配置的 方向信息 ，和我们得到的预览尺寸相匹配
 
-//                int orientation = getResources().getConfiguration().orientation;
-//
-//                if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
-//                    mTextureView.setAspectRatio(
-//                            mPreviewSize.getWidth(), mPreviewSize.getHeight());
-//                } else {
-//                    mTextureView.setAspectRatio(
-//                            mPreviewSize.getHeight(), mPreviewSize.getWidth());
-//                }
-//
+                int orientation = getResources().getConfiguration().orientation;
+
+                if (orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                    mTextureView.setAspectRatio(
+                            mPreviewSize.getWidth(), mPreviewSize.getHeight());
+                } else {
+                    mTextureView.setAspectRatio(
+                            mPreviewSize.getHeight(), mPreviewSize.getWidth());
+                }
+
 //                // Check if the flash is supported. 闪光灯
 //                // Check if the flash is supported.
                 Boolean available = characteristics.get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
