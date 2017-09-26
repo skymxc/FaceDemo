@@ -8,6 +8,8 @@ import android.util.Log;
 import com.arcsoft.facedetection.AFD_FSDKEngine;
 import com.arcsoft.facedetection.AFD_FSDKError;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 
 import cn.sintoon.facedemo.ConstantKey;
@@ -54,6 +56,7 @@ public class ARCUtil {
         }
         return false;
     }
+
 
     public static byte[] getDataFromImage(Image image, int colorFormat) {
         if (colorFormat != COLOR_FormatI420 && colorFormat != COLOR_FormatNV21) {
@@ -123,5 +126,122 @@ public class ARCUtil {
             }
         }
         return data;
+    }
+
+
+    public static void rotateNV21(byte[] input, byte[] output, int width, int height, int rotation) {
+        boolean swap = (rotation == 90 || rotation == 270);
+        boolean yflip = (rotation == 90 || rotation == 180);
+        boolean xflip = (rotation == 270 || rotation == 180);
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                int xo = x, yo = y;
+                int w = width, h = height;
+                int xi = xo, yi = yo;
+                if (swap) {
+                    xi = w * yo / h;
+                    yi = h * xo / w;
+                }
+                if (yflip) {
+                    yi = h - yi - 1;
+                }
+                if (xflip) {
+                    xi = w - xi - 1;
+                }
+                output[w * yo + xo] = input[w * yi + xi];
+                int fs = w * h;
+                int qs = (fs >> 2);
+                xi = (xi >> 1);
+                yi = (yi >> 1);
+                xo = (xo >> 1);
+                yo = (yo >> 1);
+                w = (w >> 1);
+                h = (h >> 1);
+                // adjust for interleave here
+                int ui = fs + (w * yi + xi) * 2;
+                int uo = fs + (w * yo + xo) * 2;
+                // and here
+                int vi = ui + 1;
+                int vo = uo + 1;
+                output[uo] = input[ui];
+                output[vo] = input[vi];
+            }
+        }
+    }
+
+    public static byte[] rotateYUV420Degree90(byte[] data, int imageWidth, int imageHeight) {
+        byte[] yuv = new byte[imageWidth * imageHeight * 3 / 2];
+        // Rotate the Y luma
+        int i = 0;
+        for (int x = 0; x < imageWidth; x++) {
+            for (int y = imageHeight - 1; y >= 0; y--) {
+                yuv[i] = data[y * imageWidth + x];
+                i++;
+            }
+        }
+        // Rotate the U and V color components
+        i = imageWidth * imageHeight * 3 / 2 - 1;
+        for (int x = imageWidth - 1; x > 0; x = x - 2) {
+            for (int y = 0; y < imageHeight / 2; y++) {
+                yuv[i] = data[(imageWidth * imageHeight) + (y * imageWidth) + x];
+                i--;
+                yuv[i] = data[(imageWidth * imageHeight) + (y * imageWidth)
+                        + (x - 1)];
+                i--;
+            }
+        }
+        return yuv;
+    }
+
+    public static byte[] rotateYUV420Degree180(byte[] data, int imageWidth, int imageHeight) {
+        byte[] yuv = new byte[imageWidth * imageHeight * 3 / 2];
+        int i = 0;
+        int count = 0;
+        for (i = imageWidth * imageHeight - 1; i >= 0; i--) {
+            yuv[count] = data[i];
+            count++;
+        }
+        i = imageWidth * imageHeight * 3 / 2 - 1;
+        for (i = imageWidth * imageHeight * 3 / 2 - 1; i >= imageWidth
+                * imageHeight; i -= 2) {
+            yuv[count++] = data[i - 1];
+            yuv[count++] = data[i];
+        }
+        return yuv;
+    }
+
+    //参考地址 https://stackoverflow.com/questions/14167976/rotate-an-yuv-byte-array-on-android?noredirect=1&lq=1
+    public static byte[] rotateYUV420Degree270(byte[] data, int imageWidth,
+                                               int imageHeight) {
+        byte[] yuv = new byte[imageWidth * imageHeight * 3 / 2];
+        int nWidth = 0, nHeight = 0;
+        int wh = 0;
+        int uvHeight = 0;
+        if (imageWidth != nWidth || imageHeight != nHeight) {
+            nWidth = imageWidth;
+            nHeight = imageHeight;
+            wh = imageWidth * imageHeight;
+            uvHeight = imageHeight >> 1;// uvHeight = height / 2
+        }
+        // ??Y
+        int k = 0;
+        for (int i = 0; i < imageWidth; i++) {
+            int nPos = 0;
+            for (int j = 0; j < imageHeight; j++) {
+                yuv[k] = data[nPos + i];
+                k++;
+                nPos += imageWidth;
+            }
+        }
+        for (int i = 0; i < imageWidth; i += 2) {
+            int nPos = wh;
+            for (int j = 0; j < uvHeight; j++) {
+                yuv[k] = data[nPos + i];
+                yuv[k + 1] = data[nPos + i + 1];
+                k += 2;
+                nPos += imageWidth;
+            }
+        }
+        return rotateYUV420Degree180(yuv, imageWidth, imageHeight);
     }
 }

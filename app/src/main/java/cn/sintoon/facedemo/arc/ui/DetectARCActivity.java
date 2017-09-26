@@ -12,6 +12,8 @@ import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.graphics.PorterDuff;
+import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -43,6 +45,7 @@ import com.arcsoft.facedetection.AFD_FSDKError;
 import com.arcsoft.facedetection.AFD_FSDKFace;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
@@ -55,7 +58,7 @@ import cn.sintoon.facedemo.WaitDialog;
 import cn.sintoon.facedemo.arc.utils.ARCUtil;
 import cn.sintoon.facedemo.utils.AppUtil;
 
-public class IdentifyARCActivity extends AppCompatActivity {
+public class DetectARCActivity extends AppCompatActivity {
 
     private WaitDialog mWaitDialog;
     private AutoFitTextureView mTextureView;
@@ -73,30 +76,38 @@ public class IdentifyARCActivity extends AppCompatActivity {
     private int mSensorOrientation;
     private String mCameraId = Integer.toString(CameraCharacteristics.LENS_FACING_FRONT);
     private boolean mFlashSupported;
+    /**
+     * Max preview width that is guaranteed by Camera2 API
+     */
+    private static final int MAX_PREVIEW_WIDTH = 1080;
+
+    /**
+     * Max preview height that is guaranteed by Camera2 API
+     */
+    private static final int MAX_PREVIEW_HEIGHT =  1920;
 
     public static void start(Context context) {
-        Intent intent = new Intent(context, IdentifyARCActivity.class);
+        Intent intent = new Intent(context, DetectARCActivity.class);
         context.startActivity(intent);
     }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_identify_arc);
+        setContentView(R.layout.activity_detect_arc);
         mTextureView = (AutoFitTextureView) findViewById(R.id.texture);
         mSurfaceView = (SurfaceView) findViewById(R.id.surface);
         mSurfaceView.setZOrderOnTop(true);
         mHolder = mSurfaceView.getHolder();
         mHolder.setFormat(PixelFormat.TRANSLUCENT);
 
-        getSupportActionBar().setTitle("虹软识别");
+        getSupportActionBar().setTitle("虹软识别-人脸检测");
         mWaitDialog = new WaitDialog(this);
         AppUtil.showWait(mWaitDialog, null);
     }
 
     @Override
     protected void onResume() {
-        Log.e("onResume", "identify");
         startBackground();
         super.onResume();
         if (mTextureView.isAvailable()) {
@@ -161,7 +172,7 @@ public class IdentifyARCActivity extends AppCompatActivity {
             }
             AppUtil.toast("摄像头打开失败");
             Log.e("onError", "camera");
-            AppUtil.finishActivity(IdentifyARCActivity.this);
+            AppUtil.finishActivity(DetectARCActivity.this);
         }
     };
 
@@ -188,12 +199,13 @@ public class IdentifyARCActivity extends AppCompatActivity {
             Log.e("onConfigured", "captureSession");
             if (null == mCameraDevice) {
                 AppUtil.toast("摄像头配置失败");
-                AppUtil.finishActivity(IdentifyARCActivity.this);
+                AppUtil.finishActivity(DetectARCActivity.this);
                 return;
             }
             try {
                 mCaptureSession = cameraCaptureSession;
                 mCaptureRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+//                mCaptureRequestBuilder.set(CaptureRequest.JPEG_ORIENTATION,0);
                 mCaptureRequest = mCaptureRequestBuilder.build();
                 mCaptureSession.setRepeatingRequest(mCaptureRequest, captureCallback, null);
             } catch (CameraAccessException e) {
@@ -205,7 +217,7 @@ public class IdentifyARCActivity extends AppCompatActivity {
         public void onConfigureFailed(@NonNull CameraCaptureSession cameraCaptureSession) {
             Log.e("onConfigureFailed", "capturesession");
             AppUtil.toast("摄像头配置失败");
-            AppUtil.finishActivity(IdentifyARCActivity.this);
+            AppUtil.finishActivity(DetectARCActivity.this);
         }
     };
 
@@ -228,7 +240,7 @@ public class IdentifyARCActivity extends AppCompatActivity {
         @Override
         public void onCaptureFailed(@NonNull CameraCaptureSession session, @NonNull CaptureRequest request, @NonNull CaptureFailure failure) {
             AppUtil.toast("摄像头预览失败");
-            AppUtil.finishActivity(IdentifyARCActivity.this);
+            AppUtil.finishActivity(DetectARCActivity.this);
         }
     };
 
@@ -240,32 +252,67 @@ public class IdentifyARCActivity extends AppCompatActivity {
             Image image = imageReader.acquireNextImage();
             int width = image.getWidth();
             int height = image.getHeight();
-            byte[] bytes = ARCUtil.getDataFromImage(image, ARCUtil.COLOR_FormatNV21);
+            //进行人脸检测 人脸检测必须要 nv21
+            ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+            byte[] origin = new byte[buffer.remaining()];
+            buffer.get(origin);
+            byte[] bytes = ARCUtil.getDataFromImage(image,ARCUtil.COLOR_FormatNV21);
+
+            // 前置摄像头 ，转换270°
+            byte[] rotateData =  ARCUtil.rotateYUV420Degree270(bytes,width,height);
+            int rotateWidth = height;
+            int rotateHeight = width;
             image.close();
             faces.clear();
-            //进行人脸检测
+
             AFD_FSDKEngine detectClient = ARCUtil.getDetectClient();
             AFD_FSDKError error = detectClient.AFD_FSDK_StillImageFaceDetection(
-                    bytes, width, height, AFD_FSDKEngine.CP_PAF_NV21, faces);
+                    rotateData,rotateWidth,rotateHeight, AFD_FSDKEngine.CP_PAF_NV21, faces);
             Canvas canvas = mHolder.lockCanvas();
+            //人脸检测没有出错
             if (error.getCode() == 0) {
+                //去除上一次的框框
                 canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
                 if (faces.size() >= 1) {
-                    //显示框框
+                    AppUtil.closeWait(mWaitDialog);
                     AFD_FSDKFace face = faces.get(0).clone();
                     Log.e("onImageAvailable", "face-->" + face.toString()+",角度："+getDegress(face.getDegree()));
-                    if (null == paint) {
+                    if (null == paint) {    //框框样式
                         paint = new Paint(Paint.ANTI_ALIAS_FLAG);
                         paint.setColor(Color.RED);
                         paint.setStrokeWidth(3.0f);
                         paint.setStyle(Paint.Style.STROKE);
                     }
-                    canvas.drawRect(face.getRect(), paint);
+                    //这里只为了调试角度查看 将原始检测图片放上去
+//                    YuvImage yuvImage = new YuvImage(rotateData,ImageFormat.NV21,rotateWidth,rotateHeight,null);
+//                    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+//                    yuvImage.compressToJpeg(new Rect(0,0,rotateWidth,rotateHeight),70,outputStream);
+//                    byte[] jpegData = outputStream.toByteArray();
+//                    BitmapFactory.Options options = new BitmapFactory.Options();
+//                    options.inSampleSize = 1;
+//                    Bitmap bmp = BitmapFactory.decodeStream( new ByteArrayInputStream(jpegData), null, options);
+//                    if (null!=bmp) {
+//                        canvas.drawBitmap(bmp,0,0,null);
+//                    }
+                    Rect rect = face.getRect();
+                    double dx = mTextureView.getWidth() *1.00 ;
+                    double dy = mTextureView.getHeight() *1.00;
+                    double bx = dx/rotateWidth;
+                    double by = dy/rotateHeight;
+                    float x = (float) (rect.left *bx);
+                    float t = (float) (rect.top * by);
+                    float r = (float) (rect.right * bx);
+                    float b = (float) (rect.bottom *by);
+                    RectF rectF = new RectF(x,t,r,b);
+                    canvas.drawRect(rectF, paint);
+
                 }
+
             } else {
                 AppUtil.toast("code->" + error.getCode());
             }
             mHolder.unlockCanvasAndPost(canvas);
+            //保存
 //            byte[] bytes = new byte[buffer.remaining()];
 //            buffer.get(bytes);
 //            File file = createCaptureFile();
@@ -372,9 +419,11 @@ public class IdentifyARCActivity extends AppCompatActivity {
                 }
 
                 Size largest = Collections.max(Arrays.asList(map.getOutputSizes(ImageFormat.YUV_420_888)), new CompareSizesByArea());
+
+
                 int displayRotation = getWindowManager().getDefaultDisplay().getRotation();
                 mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
-                Log.e("setUpCameraOutputs","相机方向--》"+mSensorOrientation+"手机方向-》"+displayRotation);
+                Log.e("setUpCameraOutputs", "相机方向--》" + mSensorOrientation + "手机方向-》" + displayRotation);
                 boolean swappedDimensions = false;
                 switch (displayRotation) {
                     case Surface.ROTATION_0:
@@ -405,12 +454,18 @@ public class IdentifyARCActivity extends AppCompatActivity {
                     maxPreviewWidth = displaySize.y;
                     maxPreviewHeight = displaySize.x;
                 }
+                if (maxPreviewWidth > MAX_PREVIEW_WIDTH) {
+                    maxPreviewWidth = MAX_PREVIEW_WIDTH;
+                }
 
+                if (maxPreviewHeight > MAX_PREVIEW_HEIGHT) {
+                    maxPreviewHeight = MAX_PREVIEW_HEIGHT;
+                }
                 mPreviewSize = chooseOptimalSize(map.getOutputSizes(ImageFormat.YUV_420_888),
                         rotatedPreviewWidth, rotatedPreviewHeight, maxPreviewWidth,
                         maxPreviewHeight, largest);
 
-
+                Log.e("setUpCameraOutputs","preview("+mPreviewSize.getWidth()+","+mPreviewSize.getHeight()+")");
                 mImageReader = ImageReader.newInstance(mPreviewSize.getWidth(), mPreviewSize.getHeight(), ImageFormat.YUV_420_888, 1);
                 mImageReader.setOnImageAvailableListener(onImageAvailableListener, mBackgroudHandler);
 
