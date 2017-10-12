@@ -7,4 +7,5 @@
     <string name="title_activity_verify_user_bd">VerifyUserBDActivity</string>
     <string name="title_activity_del_user">DelUserActivity</string>
     <string name="title_activity_arc">ARCActivity</string>
+    <string name="register">register</string>
 </resources>

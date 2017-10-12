@@ -17,7 +17,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
-        <activity android:name=".MainActivity">
+        <activity android:name=".MainActivity"
+            android:screenOrientation="portrait">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -27,28 +28,35 @@
         <activity
             android:name=".bd.ui.RegisterBDActivity"
             android:label="@string/title_activity_register_bd"
+            android:screenOrientation="portrait"
             android:theme="@style/AppTheme.NoActionBar" />
         <activity
             android:name=".bd.ui.BDActivity"
             android:label="@string/title_activity_bd"
+            android:screenOrientation="portrait"
             android:theme="@style/AppTheme.NoActionBar" />
         <activity
             android:name=".bd.ui.IdentifyBDActivity"
             android:label="@string/title_activity_identify"
+            android:screenOrientation="portrait"
             android:theme="@style/AppTheme.NoActionBar" />
         <activity
             android:name=".bd.ui.VerifyUserBDActivity"
             android:label="@string/title_activity_verify_user_bd"
+            android:screenOrientation="portrait"
             android:theme="@style/AppTheme.NoActionBar" />
         <activity
             android:name=".bd.ui.DelUserActivity"
             android:label="@string/title_activity_del_user"
+            android:screenOrientation="portrait"
             android:theme="@style/AppTheme.NoActionBar" />
         <activity android:name=".arc.ui.DetectARCActivity" />
         <activity
             android:name=".arc.ui.ARCActivity"
             android:label="@string/title_activity_arc"
-            android:theme="@style/AppTheme.NoActionBar"></activity>
+            android:screenOrientation="portrait"
+            android:theme="@style/AppTheme.NoActionBar" />
+        <activity android:name=".arc.ui.RegisterActivity" android:screenOrientation="portrait"></activity>
     </application>
 
 </manifest>

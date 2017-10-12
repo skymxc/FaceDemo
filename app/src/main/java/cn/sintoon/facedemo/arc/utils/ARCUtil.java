@@ -3,18 +3,23 @@ package cn.sintoon.facedemo.arc.utils;
 import android.graphics.ImageFormat;
 import android.graphics.Rect;
 import android.media.Image;
-import android.util.Log;
+import android.os.Environment;
+import android.util.Size;
 
 import com.arcsoft.facedetection.AFD_FSDKEngine;
 import com.arcsoft.facedetection.AFD_FSDKError;
+import com.arcsoft.facerecognition.AFR_FSDKEngine;
+import com.arcsoft.facerecognition.AFR_FSDKError;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
+import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 
 import cn.sintoon.facedemo.ConstantKey;
-
-import static android.util.Log.VERBOSE;
+import cn.sintoon.facedemo.arc.ui.DetectARCActivity;
 
 /**
  * Created by mxc on 2017/9/18.
@@ -24,23 +29,55 @@ import static android.util.Log.VERBOSE;
 public class ARCUtil {
 
     private static AFD_FSDKEngine detectEngine;
+    private static AFR_FSDKEngine recognitionEngine;
+    private static FaceDB db;
 
-    public static boolean init(){
+    public static boolean init() {
+        // detect
         detectEngine = new AFD_FSDKEngine();
         AFD_FSDKError afdFsdkError = detectEngine.AFD_FSDK_InitialFaceEngine(ConstantKey.ARC_APP_ID,
                 ConstantKey.ARC_FD_KEY, AFD_FSDKEngine.AFD_OPF_0_HIGHER_EXT, 16, 5);
         int code = afdFsdkError.getCode();
-        return code ==0;
+        if (code != 0) return false;
+
+        //recognition
+        recognitionEngine = new AFR_FSDKEngine();
+        AFR_FSDKError afrFsdkError = recognitionEngine.AFR_FSDK_InitialEngine(ConstantKey.ARC_APP_ID,
+                ConstantKey.ARC_FR_EKY);
+        code = afrFsdkError.getCode();
+        if (code!=0) return code!=0;
+
+        //track
+
+        return code == 0;
     }
 
-    public static void destroy(){
-        if (null!=detectEngine){
+    public static void destroy() {
+        if (null != detectEngine) {
             detectEngine.AFD_FSDK_UninitialFaceEngine();
+        }
+        if (null!=recognitionEngine){
+            recognitionEngine.AFR_FSDK_UninitialEngine();
         }
     }
 
-    public static AFD_FSDKEngine getDetectClient(){
+    public static FaceDB getDB(){
+        if (null ==db){
+            File file = new File(Environment.getExternalStorageDirectory(),"skymxc/face/");
+            if (!file.exists()){
+                file.mkdirs();
+            }
+            db = new FaceDB(file.getAbsolutePath());
+        }
+        return db;
+    }
+
+    public static AFD_FSDKEngine getDetectClient() {
         return detectEngine;
+    }
+
+    public static AFR_FSDKEngine getRecognitionEngine(){
+        return recognitionEngine;
     }
 
     private static final int COLOR_FormatI420 = 1;
@@ -243,5 +280,115 @@ public class ARCUtil {
             }
         }
         return rotateYUV420Degree180(yuv, imageWidth, imageHeight);
+    }
+
+
+    /**
+     * Compares two {@code Size}s based on their areas.
+     */
+   public static class CompareSizesByArea implements Comparator<Size> {
+
+        @Override
+        public int compare(Size lhs, Size rhs) {
+            // We cast here to ensure the multiplications won't overflow
+            return Long.signum((long) lhs.getWidth() * lhs.getHeight() -
+                    (long) rhs.getWidth() * rhs.getHeight());
+        }
+
+    }
+
+    /**
+     * Given {@code choices} of {@code Size}s supported by a camera, choose the smallest one that
+     * is at least as large as the respective texture view size, and that is at most as large as the
+     * respective max size, and whose aspect ratio matches with the specified value. If such size
+     * doesn't exist, choose the largest one that is at most as large as the respective max size,
+     * and whose aspect ratio matches with the specified value.
+     *
+     * @param choices           The list of sizes that the camera supports for the intended output
+     *                          class
+     * @param textureViewWidth  The width of the texture view relative to sensor coordinate
+     * @param textureViewHeight The height of the texture view relative to sensor coordinate
+     * @param maxWidth          The maximum width that can be chosen
+     * @param maxHeight         The maximum height that can be chosen
+     * @param aspectRatio       The aspect ratio
+     * @return The optimal {@code Size}, or an arbitrary one if none were big enough
+     */
+    public static Size chooseOptimalSize(Size[] choices, int textureViewWidth,
+                                          int textureViewHeight, int maxWidth, int maxHeight, Size aspectRatio) {
+
+
+        // Collect the supported resolutions that are at least as big as the preview Surface
+        List<Size> bigEnough = new ArrayList<>();
+        // Collect the supported resolutions that are smaller than the preview Surface
+        List<Size> notBigEnough = new ArrayList<>();
+        int w = aspectRatio.getWidth();
+        int h = aspectRatio.getHeight();
+        for (Size option : choices) {
+            if (option.getWidth() <= maxWidth && option.getHeight() <= maxHeight &&
+                    option.getHeight() == option.getWidth() * h / w) {
+                if (option.getWidth() >= textureViewWidth &&
+                        option.getHeight() >= textureViewHeight) {
+                    bigEnough.add(option);
+                } else {
+                    notBigEnough.add(option);
+                }
+            }
+        }
+
+        // Pick the smallest of those big enough. If there is no one big enough, pick the
+        // largest of those not big enough.
+        if (bigEnough.size() > 0) {
+            return Collections.min(bigEnough, new CompareSizesByArea());
+        } else if (notBigEnough.size() > 0) {
+            return Collections.max(notBigEnough, new CompareSizesByArea());
+        } else {
+            return choices[0];
+        }
+    }
+
+    public static String getDegress(int i) {
+        String degress = "0";
+        switch (i) {
+            case AFD_FSDKEngine.AFD_FOC_0:
+                degress = "0";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_30:
+                degress = "30";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_60:
+                degress = "60";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_90:
+                degress = "90";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_120:
+                degress = "120";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_150:
+                degress = "150";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_180:
+                degress = "180";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_210:
+                degress = "210";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_240:
+                degress = "240";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_270:
+                degress = "270";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_300:
+                degress = "300";
+                break;
+            case AFD_FSDKEngine.AFD_FOC_330:
+                degress = "330";
+                break;
+            default:
+                degress = "other";
+                break;
+        }
+        return degress;
     }
 }

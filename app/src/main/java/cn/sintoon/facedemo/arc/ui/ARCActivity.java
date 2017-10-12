@@ -30,8 +30,14 @@ public class ARCActivity extends AppCompatActivity {
         ARCUtil.init();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             int i = checkSelfPermission(Manifest.permission.CAMERA);
-            if (i!= PackageManager.PERMISSION_GRANTED){
-                requestPermissions(new String[]{Manifest.permission.CAMERA},200);
+            int i2 = checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            int i3 = checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE);
+            if (i!= PackageManager.PERMISSION_GRANTED
+                    ||i2!= PackageManager.PERMISSION_GRANTED
+                    ||i3!= PackageManager.PERMISSION_GRANTED){
+                requestPermissions(new String[]{Manifest.permission.CAMERA,
+                        Manifest.permission.READ_EXTERNAL_STORAGE,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE},200);
             }
         }
     }
@@ -39,7 +45,7 @@ public class ARCActivity extends AppCompatActivity {
     public void onClick(View view){
         switch (view.getId()){
             case R.id.register:
-
+                RegisterActivity.start(this);
                 break;
             case R.id.identify:
                 break;
